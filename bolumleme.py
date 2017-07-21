@@ -5,7 +5,8 @@ from PyQt5.QtWidgets import *
 
 #################################################################### 
 def main(): 
-	app = QApplication(sys.argv) 
+	app = QApplication(sys.argv)
+	app.setApplicationName('Bölümleme Demosu') 
 	w = Bolumleme() 
 	w.show() 
 	sys.exit(app.exec_()) 
@@ -41,10 +42,31 @@ class Bolumleme(QWidget):
 
 				_bolum = self.bolumBilgi(bolum, "GB")
 
-				item = QListWidgetItem("{}\t{} GB\t{}\t{}".format(_bolum["yol"],_bolum["boyut"],_bolum["dosyaSis"],_bolum["bayraklar"]))
+				item = QListWidgetItem("{}\t\t{} GB\t{}\t{}".format(_bolum["yol"],_bolum["boyut"],_bolum["dosyaSis"],_bolum["bayraklar"]))
 				item.setData(Qt.UserRole, _bolum["no"])
+				if _bolum["tur"] == parted.PARTITION_NORMAL:
+					item.setIcon(QIcon("gorseller/primary.xpm"))
+				elif _bolum["tur"] == parted.PARTITION_EXTENDED:				
+					item.setIcon(QIcon("gorseller/extended.xpm"))	
+				elif _bolum["tur"] == parted.PARTITION_LOGICAL:
+					item.setIcon(QIcon("gorseller/logical.xpm"))					
 				self.bolumListeKutu.addItem(item)
 
+			for bosBolum in self.disk.getFreeSpacePartitions():
+				_toplam = 0
+				_bolum = self.bolumBilgi(bosBolum, "GB")
+				if float(_bolum["boyut"]) > 0:
+					if _bolum["tur"] == 5:
+						uzatilmisKalan = QListWidgetItem("{}\t{} GB".format("Uzatılmış Bölüm Kalan",_bolum["boyut"]))
+						uzatilmisKalan.setIcon(QIcon("gorseller/blank.xpm"))
+						uzatilmisKalan.setData(Qt.UserRole, "ayrilmamis")
+						self.bolumListeKutu.addItem(uzatilmisKalan)
+					if _bolum["tur"] == parted.PARTITION_FREESPACE:
+						_toplam = _toplam + float(_bolum["boyut"])
+					ayrilmamis = QListWidgetItem("{}\t{} GB".format("Ayrılmamış Bölüm",_toplam))
+					ayrilmamis.setIcon(QIcon("gorseller/blank.xpm"))
+					ayrilmamis.setData(Qt.UserRole, "ayrilmamis")
+					self.bolumListeKutu.addItem(ayrilmamis)		
 		
 		disklerLayout.addWidget(self.disklerAcilirKutu)
 		disklerLayout.addWidget(self.yenileButon)
@@ -52,7 +74,12 @@ class Bolumleme(QWidget):
 		layout = QVBoxLayout()
 		layout.addWidget(disklerWidget)
 		layout.addWidget(self.bolumListeKutu)
+		lejant = QLabel()
+		lejant.setPixmap(QPixmap("gorseller/lejant.png"))
+		lejant.setAlignment(Qt.AlignCenter)
+		layout.addWidget(lejant)
 		self.bolumListeKutu.itemClicked.connect(self.bolumSecildiFonk)
+		self.bolumListeKutu.itemDoubleClicked.connect(self.bolumFormatSecFonk)
 		
 		opWidget=QWidget()
 		opButonlar = QHBoxLayout()
@@ -60,14 +87,25 @@ class Bolumleme(QWidget):
 		self.yeniBolumBtn.pressed.connect(self.bolumEkleFonk)
 		self.bolumSilBtn = QPushButton("Bölümü Sil")
 		self.bolumSilBtn.pressed.connect(self.bolumSilFonk)
+		self.kaydetBtn = QPushButton("Kaydet")
+		self.kaydetBtn.pressed.connect(self.kaydet)
 		opButonlar.addWidget(self.yeniBolumBtn)
 		opButonlar.addWidget(self.bolumSilBtn)
+		opButonlar.addWidget(self.kaydetBtn)
 		opWidget.setLayout(opButonlar) 
 		layout.addWidget(opWidget)
 		
 		self.bolumSilBtn.setEnabled(False)
 		self.setLayout(layout)
 
+	def kaydet(self):
+		self.disk.commit()
+
+	def bolumFormatSecFonk(self, tiklanan):
+		if tiklanan.data(Qt.UserRole) != "ayrilmamis":
+			for bolum in self.disk.partitions:
+				if bolum.number == tiklanan.data(Qt.UserRole):
+					print(bolum.path)
 	def bolumBilgi(self, bolum, birim):
 		_bolum = {}
 		_bolum["yol"] = bolum.path
@@ -76,7 +114,7 @@ class Bolumleme(QWidget):
 		else:
 			_bolum["boyut"] = bolum.getSize(unit=birim)
 
-		_bolum["dosyaSis"] = None
+		_bolum["dosyaSis"] = "Bilinmeyen"
 		
 		if bolum.fileSystem:
 			if bolum.fileSystem.type.startswith('linux-swap'): 
@@ -84,13 +122,13 @@ class Bolumleme(QWidget):
 			else:
 				_bolum["dosyaSis"] = bolum.fileSystem.type
 
-
-		_bolum["bayraklar"] = bolum.getFlagsAsString()
+		try:
+			_bolum["bayraklar"] = bolum.getFlagsAsString()
+		except:
+			pass
 		_bolum["no"] = bolum.number
-		_bolum["tur"] =  bolum.type
-		_bolum["baslangic"] = bolum.geometry.start
-		_bolum["bitis"] = bolum.geometry.end
-
+		_bolum["tur"] = bolum.type
+		
 		return _bolum
 
 	def diskYenile(self):
@@ -116,12 +154,37 @@ class Bolumleme(QWidget):
 
 			_bolum = self.bolumBilgi(bolum, "GB")
 
-			item = QListWidgetItem("{}\t{} GB\t{}\t{}".format(_bolum["yol"],_bolum["boyut"],_bolum["dosyaSis"],_bolum["bayraklar"]))
+			item = QListWidgetItem("{}\t\t{} GB\t{}\t{}".format(_bolum["yol"],_bolum["boyut"],_bolum["dosyaSis"],_bolum["bayraklar"]))
 			item.setData(Qt.UserRole, _bolum["no"])
-			self.bolumListeKutu.addItem(item)		
+			if _bolum["tur"] == parted.PARTITION_NORMAL:
+				item.setIcon(QIcon("gorseller/primary.xpm"))
+			elif _bolum["tur"] == parted.PARTITION_EXTENDED:				
+				item.setIcon(QIcon("gorseller/extended.xpm"))	
+			elif _bolum["tur"] == parted.PARTITION_LOGICAL:
+				item.setIcon(QIcon("gorseller/logical.xpm"))	
+			self.bolumListeKutu.addItem(item)	
+
+		for bosBolum in self.disk.getFreeSpacePartitions():
+			_toplam = 0
+			_bolum = self.bolumBilgi(bosBolum, "GB")
+			if float(_bolum["boyut"]) > 0:
+				if _bolum["tur"] == 5:
+					uzatilmisKalan = QListWidgetItem("{}\t{} GB".format("Uzatılmış Bölüm Kalan",_bolum["boyut"]))
+					uzatilmisKalan.setIcon(QIcon("gorseller/blank.xpm"))
+					uzatilmisKalan.setData(Qt.UserRole, "ayrilmamis")
+					self.bolumListeKutu.addItem(uzatilmisKalan)
+				if _bolum["tur"] == parted.PARTITION_FREESPACE:
+					_toplam = _toplam + float(_bolum["boyut"])
+				ayrilmamis = QListWidgetItem("{}\t{} GB".format("Ayrılmamış Bölüm",_toplam))
+				ayrilmamis.setIcon(QIcon("gorseller/blank.xpm"))
+				ayrilmamis.setData(Qt.UserRole, "ayrilmamis")
+		self.bolumListeKutu.addItem(ayrilmamis)			
 
 	def bolumSecildiFonk(self,tiklanan):
-		self.bolumSilBtn.setEnabled(True)
+		if tiklanan.data(Qt.UserRole) != "ayrilmamis":
+			self.bolumSilBtn.setEnabled(True)
+		else:
+			self.bolumSilBtn.setEnabled(False)
 
 
 	def bolumSilFonk(self):
@@ -135,12 +198,32 @@ class Bolumleme(QWidget):
 					print(e.message)
 				break
 	def bolumEkleFonk(self):
-
 		if self._en_buyuk_bos_alan():
-			geometri = self._en_buyuk_bos_alan()
-			eklenenBolum = self.bolumOlustur(geometri, type=parted.PARTITION_NORMAL)
-			self.disk.commit()
-			self.bolumListeYenile()
+			alan = self._en_buyuk_bos_alan()
+			birincilSayi = len(self.disk.getPrimaryPartitions())
+			uzatilmisSayi = ext_count = 1 if self.disk.getExtendedPartition() else 0
+			parts_avail = self.disk.maxPrimaryPartitionCount - (birincilSayi + uzatilmisSayi)
+			if not parts_avail and not ext_count:
+				QMessageBox.warning(self,
+				"Uyarı",
+"""Eğer dörtten fazla disk bölümü oluşturmak istiyorsanız birincil bölümlerden birini silip uzatılmış bölüm oluşturun. 
+Bu durumda oluşturduğunuz uzatılmış bölümleri işletim sistemi kurmak için kullanamayacağınızı aklınızda bulundurun."""
+				)
+			else:
+				if parts_avail:
+					if not uzatilmisSayi and parts_avail > 1:
+						self.bolumOlustur(alan, parted.PARTITION_NORMAL)
+						self.bolumListeYenile()
+					elif parts_avail == 1:
+						self.bolumOlustur(alan, parted.PARTITION_EXTENDED)
+						self.bolumListeYenile()
+				 
+				if uzatilmisSayi:
+						ext_part = self.disk.getExtendedPartition()
+						alan = ext_part.geometry.intersect(alan)
+						self.bolumOlustur(alan, parted.PARTITION_LOGICAL)
+						self.bolumListeYenile()
+
 
 		else:
 			 QMessageBox.critical(self,"Hata","Yeni disk bölümü oluşturmak için yeterli alan yok !")
@@ -157,7 +240,7 @@ class Bolumleme(QWidget):
 		
 		return alan	
 
-	def bolumOlustur(self, alan, type):
+	def bolumOlustur(self, alan, bolumTur):
 		alignment = self.aygit.optimalAlignedConstraint
 		constraint = parted.Constraint(maxGeom=alan).intersect(alignment)
 		data = {
@@ -168,14 +251,12 @@ class Bolumleme(QWidget):
 		boyut, ok = QInputDialog.getText(self, 'Bölüm oluştur', 'GB cinsinden boyut:')
 
 		if ok:
-			data["length"] = int(parted.sizeToSectors(int(boyut),"GB", self.aygit.sectorSize))
-			print(data)
+			data["end"] = int(data["start"]) + int(parted.sizeToSectors(float(boyut),"GiB", self.aygit.sectorSize))
 			try:
-				geometry = parted.Geometry(device=self.aygit, start=int(data["start"]), length=int(data["length"]))
+				geometry = parted.Geometry(device=self.aygit, start=int(data["start"]), end=int(data["end"]))
 				partition = parted.Partition(
 			        disk=self.disk,
-			        type=type,
-			        fs = parted.FileSystem("ext4", geometry),
+			        type=bolumTur,
 			        geometry = geometry,
 			    )
 
@@ -185,9 +266,6 @@ class Bolumleme(QWidget):
 			    # CreateException is raised e.g. when the partition doesn't fit on the disk.
 			    # PartedException is a generic error (e.g. start/end values out of range)
 			    raise RuntimeError(e.message)
-
-			print(partition.number)
-			return partition
 
 if __name__ == "__main__": 
 	main()
