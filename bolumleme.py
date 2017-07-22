@@ -25,10 +25,13 @@ class Bolumleme(QWidget):
 		for disk in self.diskler:
 			try:
 				if parted.Disk(disk).type == "msdos" or parted.Disk(disk).type == "gpt":
-					pass
 					self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
-			except:
-				pass
+			except parted.DiskLabelException:
+				disk = parted.freshDisk(disk, 'msdos')
+				disk.commit()
+				disk = disk.device
+				self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
+
 		self.disklerAcilirKutu.currentIndexChanged.connect(self.diskDegisti)
 		
 		if self.disklerAcilirKutu.currentData():
