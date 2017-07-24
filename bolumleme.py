@@ -24,13 +24,18 @@ class Bolumleme(QWidget):
 		self.yenileButon.pressed.connect(self.diskYenile)
 		for disk in self.diskler:
 			try:
-				if parted.Disk(disk).type == "msdos" or parted.Disk(disk).type == "gpt":
+				if parted.Disk(disk).type == "msdos":
 					self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
 			except parted.DiskLabelException:
 				disk = parted.freshDisk(disk, 'msdos')
-				disk.commit()
-				disk = disk.device
-				self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
+			# CDROM Aygıtları için
+				try:
+					disk.commit()
+				except parted.IOException:
+					pass
+				else:
+					disk = disk.device
+					self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
 
 		self.disklerAcilirKutu.currentIndexChanged.connect(self.diskDegisti)
 		
@@ -139,16 +144,24 @@ class Bolumleme(QWidget):
 		self.diskler = parted.getAllDevices()
 		for disk in self.diskler:
 			try:
-				if parted.Disk(disk).type == "msdos" or parted.Disk(disk).type == "gpt":
-					pass
+				if parted.Disk(disk).type == "msdos":
 					self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
-			except:
-				pass		
+			except parted.DiskLabelException:
+				disk = parted.freshDisk(disk, 'msdos')
+			# CDROM Aygıtları için
+				try:
+					disk.commit()
+				except parted.IOException:
+					pass
+				else:
+					disk = disk.device
+					self.disklerAcilirKutu.addItem("{} {} GB ({})".format(disk.model, format(disk.getSize(unit="GB"),'.2f'), disk.path), userData=disk.path)
 
 	def diskDegisti(self):
-		self.aygit = parted.getDevice(self.disklerAcilirKutu.currentData())
-		self.disk = parted.Disk(self.aygit)
-		self.bolumListeYenile()
+		if self.disklerAcilirKutu.currentData():
+			self.aygit = parted.getDevice(self.disklerAcilirKutu.currentData())
+			self.disk = parted.Disk(self.aygit)
+			self.bolumListeYenile()
 
 
 	def bolumListeYenile(self):
@@ -181,9 +194,10 @@ class Bolumleme(QWidget):
 				ayrilmamis = QListWidgetItem("{}\t{} GB".format("Ayrılmamış Bölüm",_toplam))
 				ayrilmamis.setIcon(QIcon("gorseller/blank.xpm"))
 				ayrilmamis.setData(Qt.UserRole, "ayrilmamis")
-		self.bolumListeKutu.addItem(ayrilmamis)			
+				self.bolumListeKutu.addItem(ayrilmamis)			
 
 	def bolumSecildiFonk(self,tiklanan):
+		
 		if tiklanan.data(Qt.UserRole) != "ayrilmamis":
 			self.bolumSilBtn.setEnabled(True)
 		else:
@@ -197,9 +211,11 @@ class Bolumleme(QWidget):
 				try:
 					self.disk.deletePartition(bolum)
 					self.bolumListeYenile()
-				except parted.PartitionException as e:
-					print(e.message)
-				break
+				except parted.PartitionException:
+					QMessageBox.warning(self,"Uyarı", 
+"Lütfen uzatılmış bölümleri silmeden önce mantıksal bölümleri siliniz.")
+		self.bolumListeKutu.setCurrentRow(self.bolumListeKutu.count() - 2)
+
 	def bolumEkleFonk(self):
 		if self._en_buyuk_bos_alan():
 			alan = self._en_buyuk_bos_alan()
@@ -223,9 +239,13 @@ Bu durumda oluşturduğunuz uzatılmış bölümleri işletim sistemi kurmak iç
 				 
 				if uzatilmisSayi:
 						ext_part = self.disk.getExtendedPartition()
-						alan = ext_part.geometry.intersect(alan)
-						self.bolumOlustur(alan, parted.PARTITION_LOGICAL)
-						self.bolumListeYenile()
+						try:
+							alan = ext_part.geometry.intersect(alan)
+						except ArithmeticError:
+							QMessageBox.critical(self,"Hata","Yeni disk bölümü oluşturmak için yeterli alan yok ! Uzatılmış bölümün boyutunu arttırmayı deneyiniz.")
+						else:	
+							self.bolumOlustur(alan, parted.PARTITION_LOGICAL)
+							self.bolumListeYenile()
 
 
 		else:
@@ -245,7 +265,7 @@ Bu durumda oluşturduğunuz uzatılmış bölümleri işletim sistemi kurmak iç
 
 	def bolumOlustur(self, alan, bolumTur):
 		alignment = self.aygit.optimalAlignedConstraint
-		constraint = parted.Constraint(maxGeom=alan).intersect(alignment)
+		constraint = self.aygit.getConstraint()
 		data = {
 		    'start': constraint.startAlign.alignUp(alan, alan.start),
 		    'end': constraint.endAlign.alignDown(alan, alan.end),
