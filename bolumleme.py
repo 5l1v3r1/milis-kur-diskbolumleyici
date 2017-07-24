@@ -264,14 +264,26 @@ Bu durumda oluşturduğunuz uzatılmış bölümleri işletim sistemi kurmak iç
 		return alan	
 
 	def bolumOlustur(self, alan, bolumTur):
+		
+		if bolumTur == parted.PARTITION_NORMAL or bolumTur == parted.PARTITION_EXTENDED:
+			for bosBolum in self.disk.getFreeSpacePartitions():
+				_bolum = self.bolumBilgi(bosBolum, "GB")
+				if _bolum["tur"] == parted.PARTITION_FREESPACE:
+					maksBoyut = float(_bolum["boyut"])
+		elif bolumTur == bolumTur == parted.PARTITION_LOGICAL:
+			for bosBolum in self.disk.getFreeSpacePartitions():
+				_bolum = self.bolumBilgi(bosBolum, "GB")
+				if _bolum["tur"] == 5:
+					maksBoyut = float(_bolum["boyut"])						
+						
 		alignment = self.aygit.optimalAlignedConstraint
 		constraint = self.aygit.getConstraint()
 		data = {
 		    'start': constraint.startAlign.alignUp(alan, alan.start),
 		    'end': constraint.endAlign.alignDown(alan, alan.end),
 		}
-	
-		boyut, ok = QInputDialog.getText(self, 'Bölüm oluştur', 'GB cinsinden boyut:')
+		
+		boyut, ok = QInputDialog().getDouble(self, 'Bölüm oluştur', 'GB cinsinden boyut:',min=0.001,value=1, max=maksBoyut,decimals=3)
 
 		if ok:
 			data["end"] = int(data["start"]) + int(parted.sizeToSectors(float(boyut),"GiB", self.aygit.sectorSize))
